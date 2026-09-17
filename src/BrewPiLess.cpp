@@ -425,6 +425,7 @@ class BrewPiWebHandler: public AsyncWebHandler
 				AsyncWebServerResponse *response = request->beginResponse_P(200, "text/html", embeddedFile, size);
 				#endif
 				response->addHeader("Content-Encoding", "gzip");
+				response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 				request->send(response);
 			}else sendProgmem(request,(const char*)embeddedFile,getContentType(path));
 			return;
@@ -456,7 +457,7 @@ class BrewPiWebHandler: public AsyncWebHandler
 			AsyncWebServerResponse * response = request->beginResponse(file, path,getContentType(path));
 #endif
 //			response->addHeader("Content-Encoding", "gzip");
-			response->addHeader("Cache-Control","max-age=2592000");
+			response->addHeader("Cache-Control", path.endsWith(".htm") ? "no-cache, no-store, must-revalidate" : "max-age=2592000");
 			request->send(response);
 			return;
 		}
@@ -473,8 +474,8 @@ class BrewPiWebHandler: public AsyncWebHandler
 
 
 			AsyncWebServerResponse *response = request->beginResponse(FileSystem, path);
-			if(nocache)
-				response->addHeader("Cache-Control","no-cache");
+			if(nocache || path.endsWith(".htm"))
+				response->addHeader("Cache-Control","no-cache, no-store, must-revalidate");
 			else
 				response->addHeader("Cache-Control","max-age=2592000");
 			request->send(response);
