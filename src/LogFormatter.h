@@ -19,6 +19,7 @@
 #define KeyRoomHumidity "roomHumidity"
 #define KeyWirelessHydrometerRssi "hydrometerRssi"
 #define KeyWirelessHydrometerName "hydrometerName"
+#define KeyUptime "uptime"
 
 size_t nonNullJson(char *buffer,size_t size);
 size_t dataSprintf(char *buffer,size_t size,const char *format,const char* invalidStr);

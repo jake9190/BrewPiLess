@@ -255,13 +255,16 @@
     function renderLcdText(info) {
         var div = Q(".error");
         if (div) div.style.display = "none";
-        var uptime = Q("#device-uptime");
-        if (uptime && typeof info.up !== "undefined") {
+        if (typeof info.up !== "undefined") {
             var totalMinutes = Math.floor(info.up / 60);
             var days = Math.floor(totalMinutes / 1440);
             var hours = Math.floor(totalMinutes % 1440 / 60);
             var minutes = totalMinutes % 60;
-            uptime.textContent = "Uptime: " + (days ? days + "d " : "") + hours + "h " + minutes + "m";
+            var uptimeText = (days ? days + "d " : "") + hours + "h " + minutes + "m";
+            var footerUptime = Q("#device-uptime");
+            var systemUptime = Q("#system-uptime");
+            if (footerUptime) footerUptime.textContent = "Uptime: " + uptimeText;
+            if (systemUptime) systemUptime.textContent = uptimeText;
         }
 
         function T(temp) {

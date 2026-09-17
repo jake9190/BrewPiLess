@@ -231,6 +231,7 @@ size_t nonNullJson(char* buffer,size_t size)
 	if(IS_FLOAT_TEMP_VALID(roomTemp)) root[KeyRoomTemp] = roomTemp;
 
 	root[KeyMode] =(int)( modeInInteger(mode) - '0');
+	root[KeyUptime] = millis() / 1000;
 	#if SupportPressureTransducer
 	if(PressureMonitor.isCurrentPsiValid()) root[KeyPressure]= PressureMonitor.currentPsi();
 	#endif

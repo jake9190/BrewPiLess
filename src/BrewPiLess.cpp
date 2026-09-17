@@ -1535,7 +1535,8 @@ public:
 				_error = true;
 				return;
 			}
-			size_t asize = (total > 256)? (total+4):256;
+			size_t asize = total + 3;
+			if(asize < 256) asize = 256;
 			_buffer =(char*) malloc(asize);
 			_error= (_buffer ==NULL);
 			_dataLength =0;

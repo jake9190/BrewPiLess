@@ -78,15 +78,19 @@ static bool buildTopic(char* topic, size_t topicSize, const char* basePath, cons
     return length >= 0 && (size_t)length < topicSize;
 }
 
+static bool buildAvailabilityTopic(char* topic, size_t topicSize, const char* basePath, uint8_t reportFormat){
+    if(!basePath) return false;
+    if(reportFormat != MqttReportJson) return buildTopic(topic, topicSize, basePath, "status");
+
+    const char* lastSlash = strrchr(basePath, '/');
+    int length = lastSlash
+        ? snprintf(topic, topicSize, "%.*s/status", (int)(lastSlash - basePath), basePath)
+        : snprintf(topic, topicSize, "status");
+    return length >= 0 && (size_t)length < topicSize;
+}
+
 void MqttRemoteControl::_onPublish(uint16_t pid){
-    if(_publishing){
-        if(pid == _lastPacketId){ // finish last packet
-            if(_mode == MqttModeLogging) // logging only
-                // problematic _client.disconnect();
-                _reconnecting = true;
-                //DBG_PRINTF("disconnect on last packet id:%d\n",pid);
-        }
-    }
+    (void)pid;
 }
 
 uint16_t MqttRemoteControl::_publish(const char* key,float value,int precision){
@@ -113,7 +117,7 @@ uint16_t MqttRemoteControl::_publish(const char* key,char value){
     uint16_t packetid=_client.publish(topic,DefaultLogginQoS,true,data,1);
     if(packetid ==0){
         // error
-        _client.disconnect();
+        _client.disconnect(true);
     }
     return packetid;
 }
@@ -155,6 +159,9 @@ void MqttRemoteControl::_reportData(void){
         
 		lastID=_publish(KeyState,(float)state,0);
 		lastID=_publish(KeyStateDescription,stateDescription(state));
+        char uptime[11];
+        snprintf(uptime,sizeof(uptime),"%lu",(unsigned long)(millis() / 1000));
+        lastID=_publish(KeyUptime,uptime);
 
 	    if(IS_FLOAT_TEMP_VALID(beerTemp)) lastID=_publish(KeyBeerTemp, beerTemp,1);
 	    if(IS_FLOAT_TEMP_VALID(beerSet)) lastID=_publish(KeyBeerSet, beerSet,1);
@@ -201,6 +208,7 @@ void MqttRemoteControl::_reportData(void){
     _lastPacketId = lastID;
     _publishing=true;
      DBG_PRINTF("Mqtt last packet id:%d\n",lastID);
+    if(lastID == 0) _client.disconnect(true);
 }
 
 bool MqttRemoteControl::loop(){
@@ -328,7 +336,7 @@ void MqttRemoteControl::_loadConfig()
         #endif
     }
 
-    if(_reportBasePath && buildTopic(_availabilityTopic,sizeof(_availabilityTopic),_reportBasePath,"status")){
+    if(_reportBasePath && buildAvailabilityTopic(_availabilityTopic,sizeof(_availabilityTopic),_reportBasePath,_reportFormat)){
         _client.setWill(_availabilityTopic,DefaultLogginQoS,true,"offline",7);
     }else{
         int length = snprintf(_availabilityTopic,sizeof(_availabilityTopic),"brewpiless/%s/status",theSettings.systemConfiguration()->hostnetworkname);
@@ -421,24 +429,24 @@ void MqttRemoteControl::_onDisconnect(void){
 }
 
 
-void MqttRemoteControl::_onMessage(char* topic, uint8_t* payload, size_t len) {
+void MqttRemoteControl::_onMessage(char* topic, char* payload, size_t len) {
     DBG_PRINTF("MQTT:rcv %s\n",topic);
 
     if(_modePath && strcmp(topic, _modePath) ==0){
-        this->_onModeChange((char*)payload,len);
+        this->_onModeChange(payload,len);
     }else if(_beerSetPath && strcmp(topic, _beerSetPath) ==0){
-        this->_onSettingTempChange(true,(char*)payload,len);
+        this->_onSettingTempChange(true,payload,len);
     }else if(_fridgeSetPath && strcmp(topic, _fridgeSetPath) ==0){
-        this->_onSettingTempChange(false,(char*)payload,len);
+        this->_onSettingTempChange(false,payload,len);
     }
 #if EanbleParasiteTempControl
     else if(_ptcPath && strcmp(topic, _ptcPath) ==0){
-        this->_onPtcChange((char*)payload,len);
+        this->_onPtcChange(payload,len);
     }
 #endif 
 #if AUTO_CAP
     else if(_capPath && strcmp(topic, _capPath) ==0){
-        this->_onCapChange((char*)payload,len);
+        this->_onCapChange(payload,len);
     }
 #endif
 }
@@ -455,6 +463,8 @@ void MqttRemoteControl::_onModeChange(char* payload,size_t len){
         DBG_PRINTF("%c",payload[i]);
     DBG_PRINTF("\n");
     #endif
+    
+    if(len == 0) return;
 
     if(*payload >='0' && *payload <= '3'){
         mode = modeChars[*payload - '0'];
@@ -485,7 +495,7 @@ void MqttRemoteControl::_onSettingTempChange(bool isBeerSet,char* payload, size_
 
     if(toCopy > MaxSettingLength) toCopy=MaxSettingLength;
 
-    if(strncmp(settingPtr,payload,toCopy) !=0){
+    if(strlen(settingPtr) != toCopy || memcmp(settingPtr,payload,toCopy) !=0){
     
         memcpy(settingPtr,payload,toCopy);
         settingPtr[toCopy]='\0';
@@ -521,6 +531,8 @@ void MqttRemoteControl::_onPtcChange(char* payload, size_t len){
 #if AUTO_CAP
 void MqttRemoteControl::_onCapChange(char* payload,size_t len){
     bool mode;
+
+    if(len == 0) return;
 
     if(*payload >='0' && *payload <= '9'){
         // number

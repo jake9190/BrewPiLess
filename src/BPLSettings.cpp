@@ -23,6 +23,8 @@
 BPLSettings theSettings;
 
 #define BPLSettingFileName "/bpl.cfg"
+#define BPLSettingBackupFileName "/bpl.cfg.bak"
+#define BPLSettingTempFileName "/bpl.cfg.tmp"
 
 
 #ifndef WL_MAC_ADDR_LENGTH
@@ -48,19 +50,33 @@ void BPLSettings::load()
 		 offsetof(Settings,remoteLogginInfo),offsetof(Settings,autoCapSettings),
 		 offsetof(Settings,parasiteTempControlSettings));
 
-	fs::File f = FileSystem.open(BPLSettingFileName, "r");
-	if(!f){
-		setDefault();
-		return;
+	const char *settingFiles[] = {
+		BPLSettingFileName,
+		BPLSettingBackupFileName,
+		BPLSettingTempFileName
+	};
+	bool loaded = false;
+	for(size_t i = 0; i < sizeof(settingFiles) / sizeof(settingFiles[0]); i++){
+		fs::File f = FileSystem.open(settingFiles[i], "r");
+		if(!f) continue;
+		size_t bytesRead = f.read((uint8_t*)&_data, sizeof(_data));
+		f.close();
+		if(bytesRead == sizeof(_data) && systemConfigurationSanity()){
+			loaded = true;
+			if(i != 0){
+				DBG_PRINTF("Recovered configuration from %s\n", settingFiles[i]);
+				save();
+			}
+			break;
+		}
+		DBG_PRINTF("Invalid configuration file: %s\n", settingFiles[i]);
 	}
-	f.read((uint8_t*)&_data,sizeof(_data));
-	f.close();
+	if(!loaded){
+		setDefault();
+	}
 	// check invalid value, and correct
 	// sanity check
 
-     if(!systemConfigurationSanity()){
-			setDefault();
-	 }
      //timeInformationSanity();
      gravityConfigSantiy();
      beerProfileSanity();
@@ -78,13 +94,30 @@ void BPLSettings::load()
 
 void BPLSettings::save()
 {
-	fs::File f = FileSystem.open(BPLSettingFileName, "w");
+	fs::File f = FileSystem.open(BPLSettingTempFileName, "w");
     if(!f){
 		DBG_PRINTF("error open configuratoin file\n");
 		return;
 	}
-    f.write((uint8_t*)&_data,sizeof(_data));
+	size_t bytesWritten = f.write((uint8_t*)&_data,sizeof(_data));
     f.close();
+	if(bytesWritten != sizeof(_data)){
+		DBG_PRINTF("error writing configuration file: %u/%u\n", bytesWritten, sizeof(_data));
+		FileSystem.remove(BPLSettingTempFileName);
+		return;
+	}
+
+	FileSystem.remove(BPLSettingBackupFileName);
+	if(FileSystem.exists(BPLSettingFileName)
+		&& !FileSystem.rename(BPLSettingFileName, BPLSettingBackupFileName)){
+		DBG_PRINTF("error backing up configuration file\n");
+		FileSystem.remove(BPLSettingTempFileName);
+		return;
+	}
+	if(!FileSystem.rename(BPLSettingTempFileName, BPLSettingFileName)){
+		DBG_PRINTF("error installing configuration file\n");
+		FileSystem.rename(BPLSettingBackupFileName, BPLSettingFileName);
+	}
 }
 
 
