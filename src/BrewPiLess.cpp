@@ -371,11 +371,11 @@ class BrewPiWebHandler: public AsyncWebHandler
 
     bool fileExists(String path)
     {
-	    if(FileSystem.exists(path)) return true;
 	    bool dum;
 	    unsigned int dum2;
 
 	    if(getEmbeddedFile(path.c_str(),dum,dum2)) return true;
+	    if(FileSystem.exists(path)) return true;
 		if(path.endsWith(CHART_LIB_PATH) && FileSystem.exists(CHART_LIB_PATH)) return true;
 		// safari workaround.
 		if(path.endsWith(".js")){
@@ -407,6 +407,29 @@ class BrewPiWebHandler: public AsyncWebHandler
 
 	void sendFile(AsyncWebServerRequest *request,String path)
 	{
+		bool gzip;
+		uint32_t size;
+		const uint8_t* embeddedFile=getEmbeddedFile(path.c_str(),gzip,size);
+		if(embeddedFile){
+			DBG_PRINTF("using embedded file:%s\n",path.c_str());
+			if(gzip){
+				#if defined(ESP32)
+				AsyncWebServerResponse *response = request->beginResponse(getContentType(path), size,[=](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+					if(index >= size) return 0;
+					const size_t remaining = size - index;
+					const size_t bytesToCopy = remaining < maxLen ? remaining : maxLen;
+					memcpy_P(buffer, embeddedFile + index, bytesToCopy);
+					return bytesToCopy;
+				});
+				#else
+				AsyncWebServerResponse *response = request->beginResponse_P(200, "text/html", embeddedFile, size);
+				#endif
+				response->addHeader("Content-Encoding", "gzip");
+				request->send(response);
+			}else sendProgmem(request,(const char*)embeddedFile,getContentType(path));
+			return;
+		}
+
 		//workaround for safari
 		if(path.endsWith(".js")){
 			String pathWithJgz = path.substring(0,path.lastIndexOf('.')) + ".jgz";
@@ -456,31 +479,6 @@ class BrewPiWebHandler: public AsyncWebHandler
 				response->addHeader("Cache-Control","max-age=2592000");
 			request->send(response);
 			return;
-		}
-		//else, embedded html file
-		bool gzip;
-		uint32_t size;
-		const uint8_t* file=getEmbeddedFile(path.c_str(),gzip,size);
-		if(file){
-			DBG_PRINTF("using embedded file:%s\n",path.c_str());
-			if(gzip){
-				#if defined(ESP32)
-                AsyncWebServerResponse *response = request->beginResponse("text/html", size,[=](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
-					 //Write up to "maxLen" bytes into "buffer" and return the amount written.
-  					//index equals the amount of bytes that have been already sent
-  					//You will not be asked for more bytes once the content length has been reached.
-  					//Keep in mind that you can not delay or yield waiting for more data!
-  					//Send what you currently have and you will be asked for more again
-  					memcpy(buffer,file + index, maxLen);
-					return maxLen;
-				});
-
-				#else
-                AsyncWebServerResponse *response = request->beginResponse_P(200, "text/html", file, size);
-				#endif
-                response->addHeader("Content-Encoding", "gzip");
-                request->send(response);
-			}else sendProgmem(request,(const char*)file,getContentType(path));
 		}
 	}	  
 public:
@@ -629,17 +627,19 @@ public:
         	fridgeSet = brewPi.getFridgeSet();
         	roomTemp = brewPi.getRoomTemp();
 
-			mode = brewPi.getMode();
-			#define TEMPorNull(a) (IS_FLOAT_TEMP_VALID(a)?  String(a):String("null"))
-			String json=String("{\"mode\":\"") + String((char) mode)
-			+ String("\",\"state\":") + String(state)
-			+ String(",\"beerSet\":") + TEMPorNull(beerSet)
-			+ String(",\"beerTemp\":") + TEMPorNull(beerTemp)
-			+ String(",\"fridgeSet\":") + TEMPorNull(fridgeSet)
-			+ String(",\"fridgeTemp\":") + TEMPorNull(fridgeTemp)
-			+ String(",\"roomTemp\":") + TEMPorNull(roomTemp)
-			+String("}");
-			request->send(200,ApplicationJsonType,json);
+			AsyncResponseStream *response = request->beginResponseStream(ApplicationJsonType);
+			response->printf("{\"mode\":\"%c\",\"state\":%u", mode, state);
+			#define PRINT_TEMP_OR_NULL(name, value) \
+				if(IS_FLOAT_TEMP_VALID(value)) response->printf(",\"%s\":%.2f", name, value); \
+				else response->printf(",\"%s\":null", name)
+			PRINT_TEMP_OR_NULL("beerSet", beerSet);
+			PRINT_TEMP_OR_NULL("beerTemp", beerTemp);
+			PRINT_TEMP_OR_NULL("fridgeSet", fridgeSet);
+			PRINT_TEMP_OR_NULL("fridgeTemp", fridgeTemp);
+			PRINT_TEMP_OR_NULL("roomTemp", roomTemp);
+			#undef PRINT_TEMP_OR_NULL
+			response->print('}');
+			request->send(response);
 		}
 	 	#ifdef ENABLE_LOGGING
 	 	else if (request->url() == LOGGING_PATH){
@@ -1079,7 +1079,7 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
 
 //      		DBG_PRINTF("ws[%u] frame [%lu - %lu]: ", client->id(), info->num, info->index, info->index + len);
 
-	        for(size_t i=0; i < info->len; i++) {
+	        for(size_t i=0; i < len; i++) {
     	    	//msg += (char) data[i];
     	    	brewPi.write(data[i]);
         	}
@@ -1142,6 +1142,7 @@ void periodicalReport(void)
 	doc["rt"] = (int)(roomTemp*100);
 	doc["sl"] = brewPi.getStatusTime();
 	doc["tu"] = String(unit);
+	doc["up"] = millis() / 1000;
 
 
 #if EanbleParasiteTempControl
@@ -1359,7 +1360,7 @@ private:
 
 public:
 
-	ExternalDataHandler(){
+	ExternalDataHandler():_buffer(NULL), _data(NULL), _dataLength(0), _error(false){
 	}
 
 	void loadConfig(void){
@@ -1383,6 +1384,14 @@ public:
 	}
 
 	void handleRequest(AsyncWebServerRequest *request){
+		if(request->method() == HTTP_POST && _error){
+			if(_buffer) free(_buffer);
+			_buffer = NULL;
+			_data = NULL;
+			_error = false;
+			request->send(413, ApplicationJsonType, "{\"error\":\"request body too large or unavailable\"}");
+			return;
+		}
 #if	SupportTiltHydrometer
 	 	if(request->url() == TiltCommandPath){
 			 if(request->hasParam("scan")){
@@ -1462,15 +1471,12 @@ public:
 				request->send(400);
 				return;
 			}
-			request->send(200,ApplicationJsonType,"{}");
-	   		_buffer[0]='G';
-    		_buffer[1]=':';
-			stringAvailable(_buffer); // send to brower to log on Javascript Console
 			// process the gravity report from iSpindel
 			processGravity(request,_data,_dataLength);
 			// Process the name
-			externalData.gravityDeviceSetting(_data);
-			stringAvailable(_data);
+			char deviceSetting[258];
+			externalData.gravityDeviceSetting(deviceSetting);
+			stringAvailable(deviceSetting);
 			
 			free(_buffer);
 			_buffer=NULL;
@@ -1523,11 +1529,17 @@ public:
 	virtual void handleBody(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)override final{
 		if(!index){
 		    DBG_PRINTF("BodyStart-len:%d total: %u\n",len, total);
+			if(total == 0 || total > MAX_DATA_SIZE){
+				_buffer = NULL;
+				_data = NULL;
+				_error = true;
+				return;
+			}
 			size_t asize = (total > 256)? (total+4):256;
 			_buffer =(char*) malloc(asize);
 			_error= (_buffer ==NULL);
 			_dataLength =0;
-	    	_data = _buffer +2;
+	    	_data = _buffer ? _buffer +2 : NULL;
 		}
 
 		if(_error){
@@ -1549,28 +1561,9 @@ public:
 };
 ExternalDataHandler externalDataHandler;
 
-IPAddress scanIP(char const *str)
+bool scanIP(const String& value, IPAddress& address)
 	{
-    	// DBG_PRINTF("Scan IP length=%d :\"%s\"\n",len,buffer);
-    	// this doesn't work. the last byte always 0: ip.fromString(buffer);
-
-    	int Parts[4] = {0,0,0,0};
-    	int Part = 0;
-		char* ptr=(char*)str;
-    	for ( ; *ptr; ptr++)
-    	{
-	    char c = *ptr;
-	    if ( c == '.' )
-	    {
-		    Part++;
-		    continue;
-	    }
-	    Parts[Part] *= 10;
-	    Parts[Part] += c - '0';
-    	}
-
-    	IPAddress sip( Parts[0], Parts[1], Parts[2], Parts[3] );
-    	return sip;
+		return address.fromString(value);
 	}
 
 class NetworkConfig:public AsyncWebHandler
@@ -1611,10 +1604,11 @@ public:
 		
 
 			String ssid=request->getParam("nw",true)->value();
-			const char *pass=NULL;
+			String password;
 			if(request->hasParam("pass",true)){
-				pass = request->getParam("pass",true)->value().c_str();
+				password = request->getParam("pass",true)->value();
 			}
+			const char *pass = password.length() ? password.c_str() : NULL;
 			
 			if(syscfg->wifiMode == WIFI_AP){
 				// change to WIFI_STA mode
@@ -1623,11 +1617,17 @@ public:
 
 			if(request->hasParam("ip",true) && request->hasParam("gw",true) && request->hasParam("nm",true)){
 				DBG_PRINTF("static IP\n");
-				IPAddress ip=scanIP(request->getParam("ip",true)->value().c_str());
-				IPAddress gw=scanIP(request->getParam("gw",true)->value().c_str());
-				IPAddress nm=scanIP(request->getParam("nm",true)->value().c_str());
-				
-				IPAddress dns=request->hasParam("dns",true)? scanIP(request->getParam("dns",true)->value().c_str()):IPAddress(0,0,0,0);
+				IPAddress ip;
+				IPAddress gw;
+				IPAddress nm;
+				IPAddress dns(0,0,0,0);
+				if(!scanIP(request->getParam("ip",true)->value(), ip)
+					|| !scanIP(request->getParam("gw",true)->value(), gw)
+					|| !scanIP(request->getParam("nm",true)->value(), nm)
+					|| (request->hasParam("dns",true) && !scanIP(request->getParam("dns",true)->value(), dns))){
+					request->send(400, ApplicationJsonType, "{\"error\":\"invalid IP configuration\"}");
+					return;
+				}
 
 				WiFiSetup.connect(ssid.c_str(),pass, 
 							ip,
@@ -1650,7 +1650,6 @@ public:
 				syscfg->netmask = IPAddress(0,0,0,0);
 				syscfg->dns = IPAddress(0,0,0,0);
 			}
-			theSettings.save();
 
 		#ifdef SaveWiFiConfiguration
 		DBG_PRINTF("SSID:%s\n",ssid.c_str());

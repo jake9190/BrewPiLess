@@ -410,8 +410,9 @@ void DeviceManager::installDevice(DeviceConfig& config)
 			DEBUG_ONLY(logInfoInt(INFO_INSTALL_TEMP_SENSOR, config.deviceFunction));
 			// sensor may be wrapped in a TempSensor class, or may stand alone.
 			s = (BasicTempSensor*)createDevice(config, dt);
-			if (*ppv==NULL){
+			if (s==NULL){
 				logErrorInt(ERROR_OUT_OF_MEMORY_FOR_DEVICE, config.deviceFunction);
+				return;
 			}
 			if (isBasicSensor(config.deviceFunction)) {
 				s->init();
@@ -439,11 +440,14 @@ void DeviceManager::installDevice(DeviceConfig& config)
 		case DEVICETYPE_SWITCH_ACTUATOR:
 		case DEVICETYPE_SWITCH_SENSOR:
 			DEBUG_ONLY(logInfoInt(INFO_INSTALL_DEVICE, config.deviceFunction));
-			*ppv = createDevice(config, dt);
-#if (BREWPI_DEBUG > 0)
-			if (*ppv==NULL)
+			{
+				void* device = createDevice(config, dt);
+				if (device==NULL){
 				logErrorInt(ERROR_OUT_OF_MEMORY_FOR_DEVICE, config.deviceFunction);
-#endif
+					return;
+				}
+				*ppv = device;
+			}
 			break;
 	}
 }
@@ -533,15 +537,20 @@ void DeviceManager::parseDeviceDefinition()
 	fill((int8_t*)&dev, sizeof(dev));
 
 	piLink.parseJson(&handleDeviceDefinition, &dev);
-	if (!inRangeInt8(dev.id, 0, MAX_DEVICE_SLOT))			// no device id given, or it's out of range, can't do anything else.
+	if (dev.id < 0 || dev.id >= MAX_DEVICE_SLOT){			// no device id given, or it's out of range, can't do anything else.
+		logError(ERROR_DEVICE_DEFINITION_UPDATE_SPEC_INVALID);
 		return;
+	}
 
 	// save the original device so we can revert
-	DeviceConfig target;
-	DeviceConfig original;
+	DeviceConfig target = {};
+	DeviceConfig original = {};
 
 	// todo - should ideally check if the eeprom is correctly initialized.
-	eepromManager.fetchDevice(original, dev.id);
+	if (!eepromManager.fetchDevice(original, dev.id)) {
+		logError(ERROR_DEVICE_DEFINITION_UPDATE_SPEC_INVALID);
+		return;
+	}
 	memcpy(&target, &original, sizeof(target));
 #ifndef ESP8266_ONE
 	piLink.print("Dev Chamber: %d, Dev Beer: %d, Dev Function: %d, Dev Hardware: %d, Dev PinNr: %d\r\n", dev.chamber, dev.beer, dev.deviceFunction, dev.deviceHardware, dev.pinNr);

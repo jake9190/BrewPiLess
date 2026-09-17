@@ -1041,29 +1041,40 @@ BrewLogger::BrewLogger(void){
 		byte tag;
 		byte mask;
 		bool timeCorrected=false;
+		bool periodFound=false;
 		uint32_t time=0;
+		auto ringByte = [&](int position) -> byte {
+			return _logBuffer[position % LogBufferSize];
+		};
 
-		while(1){
+		while(dataDrop < LogBufferSize){
 			if(idx >= LogBufferSize) idx -= LogBufferSize;
-			tag =_logBuffer[idx++];
-		    mask=_logBuffer[idx++];
+			tag =ringByte(idx++);
+		    mask=ringByte(idx++);
 			dataDrop +=2;
 
-			if(tag == PeriodTag) break;
+			if(tag == PeriodTag){
+				periodFound=true;
+				break;
+			}
 
 			if(tag == OriginGravityTag || tag == SpecificGravityTag){
     			idx += 2;
 	    		dataDrop +=2;
 			}else if(tag == TimeSyncTag){
 				// 4 additional bytes
+				time = ((uint32_t)ringByte(idx) << 24)
+						| ((uint32_t)ringByte(idx + 1) << 16)
+						| ((uint32_t)ringByte(idx + 2) << 8)
+						| ringByte(idx + 3);
     			idx += 4;
 	    		dataDrop +=4;
-				time = (_logBuffer[idx] << 24)
-						| (_logBuffer[idx + 1] << 16)
-						| (_logBuffer[idx + 2] << 8)
-						| _logBuffer[idx + 3];				
 				timeCorrected = true;
 			}
+		}
+		if(!periodFound){
+			interrupts();
+			return;
 		}
 
 
@@ -1073,32 +1084,32 @@ BrewLogger::BrewLogger(void){
 		for(int i=0;i<NumberDataBitMask;i++){
 			if(mask & (1<<i)){
 				if(idx >= LogBufferSize) idx -= LogBufferSize;
-				byte d0=_logBuffer[idx++];
-				byte d1=_logBuffer[idx++];
+				byte d0=ringByte(idx++);
+				byte d1=ringByte(idx++);
 				dataDrop +=2;
 				_headData[i] = (d0<<8) | d1;
 				//DBG_PRINTF("update idx:%d to %d\n",i,_headData[i]);
 			}
 		}
 		// drop any F tag
-		while(_logBuffer[idx] != PeriodTag ){
+		while(dataDrop < LogBufferSize && ringByte(idx) != PeriodTag ){
 			if(idx >= LogBufferSize) idx -= LogBufferSize;
-			if(_logBuffer[idx] == TimeSyncTag){
+			if(ringByte(idx) == TimeSyncTag){
+				time = ((uint32_t)ringByte(idx + 2) << 24)
+						| ((uint32_t)ringByte(idx + 3) << 16)
+						| ((uint32_t)ringByte(idx + 4) << 8)
+						| ringByte(idx + 5);
 				idx +=6;
 				dataDrop +=6;
-				time = (_logBuffer[idx + 2] << 24)
-						| (_logBuffer[idx + 3] << 16)
-						| (_logBuffer[idx + 4] << 8)
-						| _logBuffer[idx + 5];				
 				timeCorrected = true;			
-			}else if(OriginGravityTag == _logBuffer[idx] || SpecificGravityTag == _logBuffer[idx]){
+			}else if(OriginGravityTag == ringByte(idx) || SpecificGravityTag == ringByte(idx)){
 				idx +=4;
 				dataDrop +=4;
 			}else{
 
 				#if EnableHumidityControlSupport
-				if(HumidityTag ==  _logBuffer[idx]){
-					_savedHumidityValue = _logBuffer[idx+1];
+				if(HumidityTag == ringByte(idx)){
+					_savedHumidityValue = ringByte(idx+1);
 				}
 				#endif
 

@@ -35,13 +35,16 @@ var BWF = {
             this.raw(msg);
             return;
         }
-        //console.log("rcv:" + msg);
-        eval("m={" + msg + "}");
-        //	console.log("json:"+m);
-        for (var key in m) {
+        var separator = msg.indexOf(":");
+        if (separator <= 0) return;
+        var key = msg.substring(0, separator);
+        try {
+            var value = JSON.parse(msg.substring(separator + 1));
             if (typeof this.handlers[key] != "undefined") {
-                this.handlers[key](m[key]);
+                this.handlers[key](value);
             }
+        } catch (error) {
+            console.error("Invalid controller message", error);
         }
     },
     on: function(lb, handler) {

@@ -41,12 +41,15 @@ protected:
     uint8_t _reportFormat;
 
     uint32_t _reportPeriod;
+	uint8_t _lastState;
 
     bool _reconnecting;
     bool _reloadConfig;
     char _lvMode;
     char _lvBeerSet[MaxSettingLength+1];
     char _lvFridgeSet[MaxSettingLength+1];
+    char _messageBuffer[MaxSettingLength+1];
+    size_t _messageLength;
 
     char* _serverAddress;
     uint16_t _serverPort;
@@ -58,6 +61,7 @@ protected:
     char* _fridgeSetPath;
     
     char* _reportBasePath;
+	char _availabilityTopic[256];
     
     #if EanbleParasiteTempControl
     char* _ptcPath;
@@ -69,7 +73,7 @@ protected:
 
     void _onConnect(void);
     void _onDisconnect(void);
-    void _onMessage(char* topic, uint8_t* payload, size_t len);
+    void _onMessage(char* topic, char* payload, size_t len);
     void _onPublish(uint16_t packetId);
     void _onModeChange(char* payload,size_t len);
 

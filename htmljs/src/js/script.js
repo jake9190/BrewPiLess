@@ -255,6 +255,14 @@
     function renderLcdText(info) {
         var div = Q(".error");
         if (div) div.style.display = "none";
+        var uptime = Q("#device-uptime");
+        if (uptime && typeof info.up !== "undefined") {
+            var totalMinutes = Math.floor(info.up / 60);
+            var days = Math.floor(totalMinutes / 1440);
+            var hours = Math.floor(totalMinutes % 1440 / 60);
+            var minutes = totalMinutes % 60;
+            uptime.textContent = "Uptime: " + (days ? days + "d " : "") + hours + "h " + minutes + "m";
+        }
 
         function T(temp) {
             if (temp < -10000) return "--.-";

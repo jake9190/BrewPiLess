@@ -157,20 +157,26 @@ function device_apply(a) {
     var c = "U" + JSON.stringify(b);
     console.log(c);
     var tout = setTimeout(function() {
+        BWF.on("U", null);
+        BWF.on("D", null);
         alert("<%= setup_update_timeout %>")
         unblockscreen();
-    }, 5000);
+    }, 15000);
 
     BWF.on("U", function(d) {
         if (tout) clearTimeout(tout);
+        BWF.on("U", null);
+        BWF.on("D", null);
         unblockscreen();
     });
     BWF.on("D", function(d) {
         if (tout) clearTimeout(tout);
+        BWF.on("U", null);
+        BWF.on("D", null);
         unblockscreen();
         if(typeof d["logID"] != "undefined"){
             var msg = ErrMsg[d.logID];
-            if(typeof d["V"] == "array"){
+            if(Array.isArray(d["V"])){
                 d.V.forEach(function(value,index){
                     msg = msg + "," + value;
                     re = new RegExp("%" +index,"g");

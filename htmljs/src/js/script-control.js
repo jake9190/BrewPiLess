@@ -841,10 +841,10 @@ function updateTempUnit(u) {
 
 function rcvBeerProfile(p) {
     closeDlgLoading();
-    updateTempUnit(p.u); // using profile temp before we get from controller
-    BrewPiSetting.tempUnit = p.u;
+    p.u = BrewPiSetting.tempUnit;
+    updateTempUnit(BrewPiSetting.tempUnit);
     profileEditor.initProfile(p);
-    ControlChart.init("tc_chart", profileEditor.chartdata(), p.u);
+    ControlChart.init("tc_chart", profileEditor.chartdata(), BrewPiSetting.tempUnit);
 }
 
 function ccparameter(s) {

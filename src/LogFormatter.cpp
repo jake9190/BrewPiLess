@@ -26,6 +26,14 @@ static char modeInInteger(char mode){
 	return modevalue;
 }
 
+const char* stateDescription(uint8_t state){
+	static const char* descriptions[] = {
+		"idle", "off", "doorOpen", "heating", "cooling", "waitingToCool",
+		"waitingToHeat", "waitingForPeak", "coolingMinimumTime", "heatingMinimumTime"
+	};
+	return state < sizeof(descriptions) / sizeof(descriptions[0]) ? descriptions[state] : "invalid";
+}
+
 size_t printFloat(char* buffer,float value,int precision,bool valid,const char* invalidstr)
 {
 	if(valid){
@@ -36,96 +44,118 @@ size_t printFloat(char* buffer,float value,int precision,bool valid,const char* 
 	}
 }
 
-size_t dataSprintf(char *buffer,const char *format,const char* invalid)
+size_t dataSprintf(char *buffer,size_t size,const char *format,const char* invalid)
 {
+	if(!buffer || size == 0 || !format || !invalid) return 0;
 	int i=0;
 	size_t d=0;
+	char value[48];
+	auto append = [&](const char* source, size_t length) -> bool {
+		if(length >= size - d) return false;
+		memcpy(buffer + d, source, length);
+		d += length;
+		return true;
+	};
 	for(i=0;i< (int) strlen(format);i++){
 		char ch=format[i];
 		if( ch == '%'){
+			if(format[i + 1] == '\0') return 0;
 			i++;
 			ch=format[i];
 			if(ch == '%'){
-				buffer[d++]=ch;
+				value[0]=ch;
+				if(!append(value,1)) return 0;
 			}else if(ch == 'b'){
 				float  beerTemp = brewPi.getBeerTemp();
-
-				d += printFloat(buffer+d,beerTemp,1,IS_FLOAT_TEMP_VALID(beerTemp),invalid);
+				size_t length = printFloat(value,beerTemp,1,IS_FLOAT_TEMP_VALID(beerTemp),invalid);
+				if(!append(value,length)) return 0;
 			}else if(ch == 'B'){
 				float  beerSet = brewPi.getBeerSet();
-				d += printFloat(buffer+d,beerSet,1,IS_FLOAT_TEMP_VALID(beerSet),invalid);
+				size_t length = printFloat(value,beerSet,1,IS_FLOAT_TEMP_VALID(beerSet),invalid);
+				if(!append(value,length)) return 0;
 			}else if(ch == 'f'){
 				float fridgeTemp = brewPi.getFridgeTemp();
-				d += printFloat(buffer+d,fridgeTemp,1,IS_FLOAT_TEMP_VALID(fridgeTemp),invalid);
+				size_t length = printFloat(value,fridgeTemp,1,IS_FLOAT_TEMP_VALID(fridgeTemp),invalid);
+				if(!append(value,length)) return 0;
 			}else if(ch == 'F'){
 				float fridgeSet = brewPi.getFridgeSet();
-				d += printFloat(buffer+d,fridgeSet,1,IS_FLOAT_TEMP_VALID(fridgeSet),invalid);
+				size_t length = printFloat(value,fridgeSet,1,IS_FLOAT_TEMP_VALID(fridgeSet),invalid);
+				if(!append(value,length)) return 0;
 			}else if(ch == 'r'){
 				float  roomTemp = brewPi.getRoomTemp();
-				d += printFloat(buffer+d,roomTemp,1,IS_FLOAT_TEMP_VALID(roomTemp),invalid);
+				size_t length = printFloat(value,roomTemp,1,IS_FLOAT_TEMP_VALID(roomTemp),invalid);
+				if(!append(value,length)) return 0;
 			}else if(ch == 'g'){
 				float sg=externalData.gravity();
-				d += printFloat(buffer+d,sg,4,IsGravityValid(sg),invalid);
+				size_t length = printFloat(value,sg,4,IsGravityValid(sg),invalid);
+				if(!append(value,length)) return 0;
 			}else if(ch == 'p'){
 				float sg=externalData.plato();
-				d += printFloat(buffer+d,sg,2,IsGravityValid(sg),invalid);
+				size_t length = printFloat(value,sg,2,IsGravityValid(sg),invalid);
+				if(!append(value,length)) return 0;
 			}
 			else if(ch == 'P'){
 			#if SupportPressureTransducer
-				d += printFloat(buffer+d,PressureMonitor.currentPsi(),1,PressureMonitor.isCurrentPsiValid(),invalid);
+				size_t length = printFloat(value,PressureMonitor.currentPsi(),1,PressureMonitor.isCurrentPsiValid(),invalid);
 			#else
-		        strcpy(buffer+d,invalid);
-        		d+= strlen(invalid);
+				size_t length = strlen(invalid);
+				memcpy(value,invalid,length);
 			#endif
-
+				if(!append(value,length)) return 0;
 			}
 			else if(ch == 'v'){
 				float vol=externalData.deviceVoltage();
-				d += printFloat(buffer+d,vol,1,IsVoltageValid(vol),invalid);
+				size_t length = printFloat(value,vol,1,IsVoltageValid(vol),invalid);
+				if(!append(value,length)) return 0;
 			}else if(ch == 'a'){
 				float at=externalData.auxTemp();
-				d += printFloat(buffer+d,at,1,IS_FLOAT_TEMP_VALID(at),invalid);
+				size_t length = printFloat(value,at,1,IS_FLOAT_TEMP_VALID(at),invalid);
+				if(!append(value,length)) return 0;
 			}else if(ch == 't'){
 				float tilt=externalData.tiltValue();
-				d += printFloat(buffer+d,tilt,2,true,invalid);
+				size_t length = printFloat(value,tilt,2,true,invalid);
+				if(!append(value,length)) return 0;
 			}else if(ch == 'u'){
-				d += sprintInt(buffer+d, externalData.lastUpdate());
+				size_t length = sprintInt(value, externalData.lastUpdate());
+				if(!append(value,length)) return 0;
 			}else if(ch == 'U'){
-				char unit = brewPi.getUnit();
-				*(buffer+d)= unit;
-				d++;
+				value[0] = brewPi.getUnit();
+				if(!append(value,1)) return 0;
 			}else if(ch == 'm'){
-				*(buffer+d)= modeInInteger(brewPi.getMode());
-				d++;
+				value[0] = modeInInteger(brewPi.getMode());
+				if(!append(value,1)) return 0;
 			}else if(ch == 'M'){
-				*(buffer+d)= brewPi.getMode();
-				d++;
+				value[0] = brewPi.getMode();
+				if(!append(value,1)) return 0;
 			}else if(ch == 's'){
-				*(buffer+d)= '0' + brewPi.getState();
-				d++;
+				value[0] = '0' + brewPi.getState();
+				if(!append(value,1)) return 0;
 			}else if(ch == 'H'){
-				strcpy(buffer+d,theSettings.systemConfiguration()->hostnetworkname);
-				d += strlen(theSettings.systemConfiguration()->hostnetworkname);
+				const char* hostname = theSettings.systemConfiguration()->hostnetworkname;
+				if(!append(hostname,strlen(hostname))) return 0;
 			}else if(ch == 'h'){
 				#if EnableHumidityControlSupport
-				 d += printFloat(buffer+d,(float)humidityControl.humidity(),0,humidityControl.isHumidityValid(),invalid);
+				size_t length = printFloat(value,(float)humidityControl.humidity(),0,humidityControl.isHumidityValid(),invalid);
 				#else
-		        strcpy(buffer+d,invalid);
-        		d+= strlen(invalid);
+				size_t length = strlen(invalid);
+				memcpy(value,invalid,length);
 				#endif
+				if(!append(value,length)) return 0;
 			}else if(ch == 'E'){
 				#if EnableHumidityControlSupport
-				 d += printFloat(buffer+d,(float)humidityControl.roomHumidity(),0,humidityControl.isRoomSensorInstalled(),invalid);
+				size_t length = printFloat(value,(float)humidityControl.roomHumidity(),0,humidityControl.isRoomSensorInstalled(),invalid);
 				#else
-		        strcpy(buffer+d,invalid);
-        		d+= strlen(invalid);
+				size_t length = strlen(invalid);
+				memcpy(value,invalid,length);
 				#endif
+				if(!append(value,length)) return 0;
 			}else{				
 				// wrong format
 				//return 0; ignored
 			}
 		}else{
-			buffer[d++]=ch;
+			value[0]=ch;
+			if(!append(value,1)) return 0;
 		}
 	}// for each char
 
@@ -168,7 +198,7 @@ int copyTemp(char* buf,char* name,float value, bool concate)
 
 size_t nonNullJson(char* buffer,size_t size)
 {
-	const int JSON_BUFFER_SIZE = JSON_OBJECT_SIZE(15);
+	const int JSON_BUFFER_SIZE = JSON_OBJECT_SIZE(16);
 	
 	#if ARDUINOJSON_VERSION_MAJOR == 6
 	DynamicJsonDocument root(JSON_BUFFER_SIZE +size);
@@ -192,6 +222,7 @@ size_t nonNullJson(char* buffer,size_t size)
 
 
 	root[KeyState] = state;
+	root[KeyStateDescription] = stateDescription(state);
 
 	if(IS_FLOAT_TEMP_VALID(beerTemp)) root[KeyBeerTemp] = beerTemp;
 	if(IS_FLOAT_TEMP_VALID(beerSet)) root[KeyBeerSet] = beerSet;

@@ -53,9 +53,9 @@ void DataLogger::sendData(void)
 	}else{
 
 		if(_loggingInfo->service == ServiceHTTPNullString){
-			len =dataSprintf(data,_loggingInfo->format,"\"\"");
+			len =dataSprintf(data,BUFFERSIZE,_loggingInfo->format,"\"\"");
 		}else{
-			len =dataSprintf(data,_loggingInfo->format,"null");
+			len =dataSprintf(data,BUFFERSIZE,_loggingInfo->format,"null");
 		}
 	}
 

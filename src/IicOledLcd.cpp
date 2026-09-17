@@ -30,7 +30,9 @@
 #endif
 
 IICOledLcd::IICOledLcd(uint8_t lcd_Addr,uint8_t sda,uint8_t scl)
-:_display(lcd_Addr,sda,scl)
+:_display(lcd_Addr,sda,scl), _Addr(lcd_Addr), _currline(0), _currpos(0),
+ _cols(20), _rows(4), _fontHeight(12), _fontWidth(6), _backlightval(0),
+ _backlightTime(0), _bufferOnly(false)
 {
 }
 
@@ -42,8 +44,8 @@ void IICOledLcd::init(){
     _fontWidth=6;
 }
 void IICOledLcd::begin(uint8_t cols, uint8_t lines){
-  	_cols = cols;
-  	_rows = lines;
+    _cols = min(cols, (uint8_t)20);
+    _rows = min(lines, (uint8_t)4);
     _currline = 0;
     _currpos = 0;
 
@@ -76,9 +78,8 @@ void IICOledLcd::home(){
 }
 
 void IICOledLcd::setCursor(uint8_t col, uint8_t row){
-	if ( row > _rows ) {
-		row = _rows-1;    // we count rows starting w/0
-	}
+    if (row >= _rows) row = _rows - 1;
+    if (col >= _cols) col = _cols - 1;
 
     _currline = row;
     _currpos = col;
@@ -116,6 +117,7 @@ inline int16_t  IICOledLcd::ypos(void)
 }
 
 inline void IICOledLcd::internal_write(uint8_t value) {
+	if (_currline >= _rows || _currpos >= _cols) return;
     content[_currline][_currpos] = value;
 
     if (!_bufferOnly) {
@@ -133,8 +135,8 @@ inline void IICOledLcd::internal_write(uint8_t value) {
 
 inline size_t IICOledLcd::write(uint8_t value) {
 	internal_write(value);
-    _display.display();
-    return 0;
+    if (!_bufferOnly) _display.display();
+    return 1;
 }
 
 // This resets the backlight timer and updates the SPI output
@@ -166,7 +168,7 @@ void IICOledLcd::printSpacesToRestOfLine(void){
     while(_currpos < _cols){
         internal_write(' ');
     }
-    _display.display();
+    if (!_bufferOnly) _display.display();
 }
 
 void IICOledLcd::print(const char * str){
