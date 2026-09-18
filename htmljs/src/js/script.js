@@ -871,6 +871,20 @@
         initRssi();
         Capper.init();
         BWF.gotMsg = true;
+        s_ajax({
+            url: "/getstatus",
+            m: "GET",
+            success: function(data) {
+                try {
+                    BPLMsg(JSON.parse(data));
+                } catch (error) {
+                    console.error("Invalid status response", error);
+                }
+            },
+            fail: function(error) {
+                console.error("Unable to load status", error);
+            }
+        });
         connBWF();
         setTimeout(function() { BChart.start(); }, T_LOAD_CHART);
         getActiveNavItem();

@@ -78,15 +78,8 @@ static bool buildTopic(char* topic, size_t topicSize, const char* basePath, cons
     return length >= 0 && (size_t)length < topicSize;
 }
 
-static bool buildAvailabilityTopic(char* topic, size_t topicSize, const char* basePath, uint8_t reportFormat){
-    if(!basePath) return false;
-    if(reportFormat != MqttReportJson) return buildTopic(topic, topicSize, basePath, "status");
-
-    const char* lastSlash = strrchr(basePath, '/');
-    int length = lastSlash
-        ? snprintf(topic, topicSize, "%.*s/status", (int)(lastSlash - basePath), basePath)
-        : snprintf(topic, topicSize, "status");
-    return length >= 0 && (size_t)length < topicSize;
+static bool buildAvailabilityTopic(char* topic, size_t topicSize, const char* basePath){
+    return buildTopic(topic, topicSize, basePath, "status");
 }
 
 void MqttRemoteControl::_onPublish(uint16_t pid){
@@ -142,7 +135,9 @@ void MqttRemoteControl::_reportData(void){
     if(_reportFormat == MqttReportJson){
 
         int len = nonNullJson(data,BUFFERSIZE);
-        lastID=_client.publish(_reportBasePath,DefaultLogginQoS,true,data,len);
+        char topic[256];
+        if(buildTopic(topic,sizeof(topic),_reportBasePath,"json"))
+            lastID=_client.publish(topic,DefaultLogginQoS,true,data,len);
         DBG_PRINTF("Publish Json:%s\n",data);
     }else if(_reportFormat == MqttReportIndividual){
     	
@@ -336,7 +331,7 @@ void MqttRemoteControl::_loadConfig()
         #endif
     }
 
-    if(_reportBasePath && buildAvailabilityTopic(_availabilityTopic,sizeof(_availabilityTopic),_reportBasePath,_reportFormat)){
+    if(_reportBasePath && buildAvailabilityTopic(_availabilityTopic,sizeof(_availabilityTopic),_reportBasePath)){
         _client.setWill(_availabilityTopic,DefaultLogginQoS,true,"offline",7);
     }else{
         int length = snprintf(_availabilityTopic,sizeof(_availabilityTopic),"brewpiless/%s/status",theSettings.systemConfiguration()->hostnetworkname);

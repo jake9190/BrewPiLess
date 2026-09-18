@@ -90,6 +90,7 @@ extern WiFiClient serverClient;
 
 bool PiLink::firstPair;
 char PiLink::printfBuff[PRINTF_BUFFER_SIZE];
+String* PiLink::captureOutput;
 #ifdef BUFFER_PILINK_PRINTS
 String PiLink::printBuf;
 #endif
@@ -125,6 +126,11 @@ void PiLink::print_P(const char *fmt, ... ){
 //	vsnprintf(printfBuff, PRINTF_BUFFER_SIZE, fmt, args);
 	va_end (args);
 
+	if(captureOutput){
+		*captureOutput += printfBuff;
+		return;
+	}
+
 #ifdef ESP8266_ONE
 	brewPiTxBuffer.print(printfBuff);
 #else
@@ -150,6 +156,10 @@ void PiLink::print(const char *fmt, ... ){
 	va_start (args, fmt );
 	vsnprintf(printfBuff, PRINTF_BUFFER_SIZE, fmt, args);
 	va_end (args);
+	if(captureOutput){
+		*captureOutput += printfBuff;
+		return;
+	}
 #ifdef ESP8266_ONE
 	brewPiTxBuffer.print(printfBuff);
 #else
@@ -175,6 +185,10 @@ void PiLink::print(const char *fmt, ... ){
 
 #if defined(ESP8266) || defined(ESP32)
 void PiLink::print(char out) {
+	if(captureOutput){
+		*captureOutput += out;
+		return;
+	}
 #ifdef ESP8266_ONE
 brewPiTxBuffer.print(out);
 #else
@@ -197,6 +211,10 @@ brewPiTxBuffer.print(out);
 #endif
 
 void PiLink::printNewLine(){
+	if(captureOutput){
+		*captureOutput += '\n';
+		return;
+	}
 #ifdef ESP8266_ONE
 	brewPiTxBuffer.println();
 #else
@@ -719,6 +737,26 @@ const PiLink::JsonOutput PiLink::jsonOutputCVMap[] PROGMEM = {
 void PiLink::sendControlVariables(void){
 	jsonOutputBase = (uint8_t*)&tempControl.cv;
 	sendJsonValues('V', jsonOutputCVMap, sizeof(jsonOutputCVMap)/sizeof(jsonOutputCVMap[0]));
+}
+
+void PiLink::controlJson(String& output){
+	output = "{\"c\":";
+	String response;
+	captureOutput = &response;
+	sendControlConstants();
+	output += response.substring(2, response.length() - 1);
+
+	response = "";
+	sendControlVariables();
+	output += ",\"v\":";
+	output += response.substring(2, response.length() - 1);
+
+	response = "";
+	sendControlSettings();
+	captureOutput = NULL;
+	output += ",\"s\":";
+	output += response.substring(2, response.length() - 1);
+	output += "}";
 }
 
 void PiLink::printJsonName(const char * name)

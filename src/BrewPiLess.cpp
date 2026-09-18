@@ -148,6 +148,7 @@ extern "C" {
 #define BEER_PROFILE_PATH       "/tschedule"
 
 #define GETSTATUS_PATH "/getstatus"
+#define GETCONTROL_PATH "/getcontrol"
 #define DEFAULT_INDEX_FILE     "index.htm"
 
 #if EanbleParasiteTempControl
@@ -181,6 +182,8 @@ extern "C" {
 #endif
 
 #define HUMIDITY_CONTROL_PATH "/rh"
+
+static void populateRuntimeStatus(DynamicJsonDocument& doc);
 
 const char *public_list[]={
 "/bwf.js",
@@ -617,30 +620,15 @@ public:
 
 			handleFilePuts(request);
 		}else if(request->method() == HTTP_GET && request->url() == GETSTATUS_PATH){
-			uint8_t mode, state;
-			float beerSet, beerTemp, fridgeTemp, fridgeSet, roomTemp;
-
-	        state = brewPi.getState();
-        	mode = brewPi.getMode();
-    	    beerTemp = brewPi.getBeerTemp();
-        	beerSet = brewPi.getBeerSet();
-        	fridgeTemp = brewPi.getFridgeTemp();
-        	fridgeSet = brewPi.getFridgeSet();
-        	roomTemp = brewPi.getRoomTemp();
-
 			AsyncResponseStream *response = request->beginResponseStream(ApplicationJsonType);
-			response->printf("{\"mode\":\"%c\",\"state\":%u", mode, state);
-			#define PRINT_TEMP_OR_NULL(name, value) \
-				if(IS_FLOAT_TEMP_VALID(value)) response->printf(",\"%s\":%.2f", name, value); \
-				else response->printf(",\"%s\":null", name)
-			PRINT_TEMP_OR_NULL("beerSet", beerSet);
-			PRINT_TEMP_OR_NULL("beerTemp", beerTemp);
-			PRINT_TEMP_OR_NULL("fridgeSet", fridgeSet);
-			PRINT_TEMP_OR_NULL("fridgeTemp", fridgeTemp);
-			PRINT_TEMP_OR_NULL("roomTemp", roomTemp);
-			#undef PRINT_TEMP_OR_NULL
-			response->print('}');
+			DynamicJsonDocument doc(2048);
+			populateRuntimeStatus(doc);
+			serializeJson(doc, *response);
 			request->send(response);
+		}else if(request->method() == HTTP_GET && request->url() == GETCONTROL_PATH){
+			String control;
+			PiLink::controlJson(control);
+			request->send(200, ApplicationJsonType, control);
 		}
 	 	#ifdef ENABLE_LOGGING
 	 	else if (request->url() == LOGGING_PATH){
@@ -819,6 +807,7 @@ public:
 			 || request->url() == RESETWIFI_PATH  
 			 || request->url() == RESTART_PATH  
 			 || request->url() == GETSTATUS_PATH
+			 || request->url() == GETCONTROL_PATH
 			 || request->url() == BEER_PROFILE_PATH
 			 || request->url() == MQTT_PATH
 	 		#ifdef ENABLE_LOGGING
@@ -1022,17 +1011,31 @@ public:
 
 AsyncWebSocket ws(WS_PATH);
 
+static void sendWebSocketClientMessage(AsyncWebSocketClient *destClient, const char *msg)
+{
+	if(destClient == NULL || msg == NULL)
+		return;
+	if(destClient->status() != WS_CONNECTED)
+		return;
+	// The library copies the payload immediately when given a String reference,
+	// so keep the message data alive only for the duration of this call.
+	destClient->text(String(msg));
+}
+
 #if GreetingInMainLoop
 AsyncWebSocketClient * _lastWSclient=NULL;
 void sayHelloWS()
 {
-	if(! _lastWSclient) return;
-	
-	greeting([=](const char* msg){
-			_lastWSclient->text(msg);
-	});
-	
+	AsyncWebSocketClient *client = _lastWSclient;
 	_lastWSclient = NULL;
+	if(client == NULL)
+		return;
+	if(client->status() != WS_CONNECTED)
+		return;
+	
+	greeting([client](const char* msg){
+		sendWebSocketClientMessage(client, msg);
+	});
 }
 
 #endif
@@ -1046,12 +1049,15 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
 		#if GreetingInMainLoop
 		_lastWSclient = client;
 		#else
-		greeting([=](const char* msg){
-			client->text(msg);
+		greeting([client](const char* msg){
+			sendWebSocketClientMessage(client, msg);
 		});
 		#endif
   	} else if(type == WS_EVT_DISCONNECT){
     	DBG_PRINTF("ws[%s] disconnect: %u\n", server->url(), client->id());
+		if(_lastWSclient == client){
+			_lastWSclient = NULL;
+		}
   	} else if(type == WS_EVT_ERROR){
     	DBG_PRINTF("ws[%s][%u] error(%u): %s\n", server->url(), client->id(), *((uint16_t*)arg), (char*)data);
   	} else if(type == WS_EVT_PONG){
@@ -1115,35 +1121,36 @@ void notifyLogStatus(void)
 	stringAvailable(status.c_str());
 }
 
-void periodicalReport(void)
+static void populateRuntimeStatus(DynamicJsonDocument& doc)
 {
-//	char buf[512];
+	uint8_t mode = brewPi.getMode();
+	uint8_t state = brewPi.getState();
+	char unit = brewPi.getUnit();
+	float beerSet = brewPi.getBeerSet();
+	float beerTemp = brewPi.getBeerTemp();
+	float fridgeTemp = brewPi.getFridgeTemp();
+	float fridgeSet = brewPi.getFridgeSet();
+	float roomTemp = brewPi.getRoomTemp();
 
-	uint8_t mode, state;
-	char unit;
-	float beerSet, beerTemp, fridgeTemp, fridgeSet, roomTemp;
-	
-	mode = brewPi.getMode();
-	state = brewPi.getState();
-	unit = brewPi.getUnit();
-	beerSet = brewPi.getBeerSet();
-	beerTemp = brewPi.getBeerTemp();
-	fridgeTemp=brewPi.getFridgeTemp();
-	fridgeSet = brewPi.getFridgeSet();
-	roomTemp = brewPi.getRoomTemp();
-
-	DynamicJsonDocument doc(1024);
 	doc["rssi"]= WiFi.RSSI();
 	doc["st"] = state;
 	doc["md"] = String((char)mode);
-	doc["bt"] = (int)(beerTemp*100);
-	doc["bs"] = (int)(beerSet*100);
-	doc["ft"] = (int)(fridgeTemp*100);
-	doc["fs"] = (int)(fridgeSet*100);
-	doc["rt"] = (int)(roomTemp*100);
+	doc["bt"] = IS_FLOAT_TEMP_VALID(beerTemp) ? (int)(beerTemp*100) : -32768;
+	doc["bs"] = IS_FLOAT_TEMP_VALID(beerSet) ? (int)(beerSet*100) : -32768;
+	doc["ft"] = IS_FLOAT_TEMP_VALID(fridgeTemp) ? (int)(fridgeTemp*100) : -32768;
+	doc["fs"] = IS_FLOAT_TEMP_VALID(fridgeSet) ? (int)(fridgeSet*100) : -32768;
+	doc["rt"] = IS_FLOAT_TEMP_VALID(roomTemp) ? (int)(roomTemp*100) : -32768;
 	doc["sl"] = brewPi.getStatusTime();
 	doc["tu"] = String(unit);
 	doc["up"] = millis() / 1000;
+
+	doc["mode"] = String((char)mode);
+	doc["state"] = state;
+	if(IS_FLOAT_TEMP_VALID(beerSet)) doc["beerSet"] = beerSet; else doc["beerSet"] = nullptr;
+	if(IS_FLOAT_TEMP_VALID(beerTemp)) doc["beerTemp"] = beerTemp; else doc["beerTemp"] = nullptr;
+	if(IS_FLOAT_TEMP_VALID(fridgeSet)) doc["fridgeSet"] = fridgeSet; else doc["fridgeSet"] = nullptr;
+	if(IS_FLOAT_TEMP_VALID(fridgeTemp)) doc["fridgeTemp"] = fridgeTemp; else doc["fridgeTemp"] = nullptr;
+	if(IS_FLOAT_TEMP_VALID(roomTemp)) doc["roomTemp"] = roomTemp; else doc["roomTemp"] = nullptr;
 
 
 #if EanbleParasiteTempControl
@@ -1189,7 +1196,12 @@ void periodicalReport(void)
 	G["a"] = externalData.tiltValue();
 	// battery, for iSPindel & Pill
 	G["b"] = externalData.deviceVoltage();
+}
 
+void periodicalReport(void)
+{
+	DynamicJsonDocument doc(2048);
+	populateRuntimeStatus(doc);
 	String out="A:";
 	serializeJson(doc,out);
 

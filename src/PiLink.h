@@ -85,6 +85,7 @@ class PiLink{
 
 public:
 	static void printTemperaturesJSON(const char * beerAnnotation, const char * fridgeAnnotation);
+	static void controlJson(String& output);
 private:
 	static void sendJsonPair(const char * name, const char * val); // send one JSON pair with a string value as name:val,
 	static void sendJsonPair(const char * name, char val); // send one JSON pair with a char value as name:val,
@@ -151,6 +152,7 @@ private:
 
 	private:
 	static bool firstPair;
+	static String* captureOutput;
 	friend class DeviceManager;
 	friend class PiLinkTest;
 	friend class Logger;
