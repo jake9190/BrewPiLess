@@ -233,6 +233,13 @@ extern const uint8_t* getEmbeddedFile(const char* filename,bool &gzip, unsigned 
 void requestRestart(bool disc);
 void bleDeviceScanResult(String& result);
 
+#if ESP32
+bool _pendingEraseAP = false;
+bool _pendingWiFiModeChange = false;
+WiFiMode _pendingWiFiMode;
+unsigned long _pendingNetworkChangeAt = 0;
+#endif
+
 
 void initTime(bool apmode)
 {
@@ -541,8 +548,8 @@ public:
 					display.setAutoOffPeriod(theSettings.systemConfiguration()->backlite);
 					#if ESP32
 					if (theSettings.systemConfiguration()->securedAp){
-						WiFi.eraseAP();
-						// https://github.com/espressif/arduino-esp32/issues/8976
+						_pendingEraseAP = true;
+						_pendingNetworkChangeAt = millis();
 					}
 					#endif
 
@@ -552,13 +559,12 @@ public:
 
 					if(oldMode !=  theSettings.systemConfiguration()->wifiMode){
 						DBG_PRINTF("change from %d to %d\n",oldMode,theSettings.systemConfiguration()->wifiMode);
-						WiFiSetup.setMode((WiFiMode) (theSettings.systemConfiguration()->wifiMode));
+						_pendingWiFiMode = (WiFiMode)theSettings.systemConfiguration()->wifiMode;
+						_pendingWiFiModeChange = true;
+						_pendingNetworkChangeAt = millis();
 					}
 
 					if(!request->hasParam("nb")){
-						#if ESP32
-						WiFi.eraseAP(); // https://github.com/espressif/arduino-esp32/issues/8976
-						#endif
 						requestRestart(false);
 					}
 				}else{
@@ -1017,6 +1023,8 @@ static void sendWebSocketClientMessage(AsyncWebSocketClient *destClient, const c
 		return;
 	if(destClient->status() != WS_CONNECTED)
 		return;
+	if(destClient->queueIsFull())
+		return;
 	// The library copies the payload immediately when given a String reference,
 	// so keep the message data alive only for the duration of this call.
 	destClient->text(String(msg));
@@ -1107,6 +1115,9 @@ void stringAvailable(const char *str)
 {
 	//DBG_PRINTF("BroadCast:%s\n",str);
 
+	ws.cleanupClients();
+	if(!ws.availableForWriteAll())
+		return;
 	ws.textAll(str);
 
 
@@ -1893,6 +1904,24 @@ void requestRestart(bool disc)
 	_systemState =SystemStateRestartPending;
 }
 
+#if ESP32
+static void applyPendingNetworkChanges(void)
+{
+	if((!_pendingEraseAP && !_pendingWiFiModeChange) ||
+	   (millis() - _pendingNetworkChangeAt) < TIME_RESTART_TIMEOUT){
+		return;
+	}
+	if(_pendingWiFiModeChange){
+		WiFiSetup.setMode(_pendingWiFiMode);
+		_pendingWiFiModeChange = false;
+	}
+	if(_pendingEraseAP){
+		WiFi.eraseAP();
+		_pendingEraseAP = false;
+	}
+}
+#endif
+
 #define IS_RESTARTING (_systemState!=SystemStateOperating)
 
 
@@ -2032,11 +2061,13 @@ void setup(void){
 	// get time
 	initTime(WiFiSetup.isApMode());
 
+#ifdef ESP8266
 	if (!MDNS.begin(syscfg->hostnetworkname)) {
 			DBG_PRINTF("Error setting mDNS responder\n");
 	}else{
 		MDNS.addService("http", "tcp", 80);
 	}
+#endif
 
 	// TODO: SSDP responder
 
@@ -2243,6 +2274,9 @@ void loop(void){
 	  	_systemState =SystemStateWaitRestart;
   	}else if(_systemState ==SystemStateWaitRestart){
   		if((millis() - _time) > TIME_RESTART_TIMEOUT){
+			#if ESP32
+			applyPendingNetworkChanges();
+			#endif
   			if(_disconnectBeforeRestart){
   				WiFi.disconnect();
   				WiFiSetup.setAutoReconnect(false);
@@ -2250,5 +2284,9 @@ void loop(void){
   			}
   			ESP.restart();
   		}
+	}else{
+		#if ESP32
+		applyPendingNetworkChanges();
+		#endif
   	}
 }
