@@ -93,6 +93,14 @@ var devices = {
                 g.querySelector("span.device-value").innerHTML = (typeof f.v === "undefined") ? "-" : ((f.v) ? "active" : "inactive")
             }
         }
+        var enabledLabel = document.createElement("label");
+        var enabledInput = document.createElement("input");
+        enabledInput.type = "checkbox";
+        enabledInput.className = "device-enabled";
+        enabledInput.checked = !f.d;
+        enabledLabel.appendChild(enabledInput);
+        enabledLabel.appendChild(document.createTextNode("<%= log_enabled %>"));
+        g.querySelector("div.device-title").parentNode.appendChild(enabledLabel);
         g.querySelector("select.slot-select").value = f.i;
         if(f.h != HW_BME280 && f.h != HW_ENV_SENSOR) g.querySelector("span.device-pin").innerHTML = this.pinlabel(f.p);
         g.querySelector("select.device-function").value = f.f;
@@ -134,6 +142,7 @@ function cmdfrom(b) {
     }
     c.h = a.h;
     c.p = a.p;
+    c.d = div.querySelector("input.device-enabled").checked ? 0 : 1;
     if (c.h == HW_1W_SENSOR) { // onewire temp sensor
         c.a = a.a
     } else if (c.h == HW_1W_2413) { //  onewire 2413
@@ -167,7 +176,7 @@ function device_apply(a) {
         if (tout) clearTimeout(tout);
         BWF.on("U", null);
         BWF.on("D", null);
-        unblockscreen();
+        list();
     });
     BWF.on("D", function(d) {
         if (tout) clearTimeout(tout);
@@ -204,7 +213,8 @@ function backup() {
             b: f.b,
             f: f.f,
             h: f.h,
-            p: f.p
+            p: f.p,
+            d: f.d ? 1 : 0
         };
         if (f.h == HW_1W_SENSOR) {
             e.a = f.a
@@ -221,6 +231,9 @@ function backup() {
 }
 
 function restoreJson(b){
+    b.forEach(function(device) {
+        if (typeof device.d === "undefined") device.d = 0;
+    });
     blockscreen("<%= script_setup_restoring %>");
     var a = 0;
     BWF.on("U", function(d) {

@@ -361,6 +361,7 @@ void DeviceManager::uninstallDevice(DeviceConfig& config)
 		case DEVICETYPE_SWITCH_ACTUATOR:
 			if (*ppv!=&defaultActuator) {
 //				DEBUG_ONLY(logInfoInt(INFO_UNINSTALL_ACTUATOR, config.deviceFunction));
+				((Actuator*)*ppv)->setActive(false);
 				delete (Actuator*)*ppv;
 				*ppv = &defaultActuator;
 			}
@@ -399,8 +400,18 @@ void DeviceManager::installDevice(DeviceConfig& config)
 {
 	DeviceType dt = deviceType(config.deviceFunction);
 	void** ppv = deviceTarget(config);
-	if (ppv==NULL || config.hw.deactivate)
+	if (ppv==NULL)
 		return;
+	if (config.hw.deactivate) {
+		if (dt == DEVICETYPE_SWITCH_ACTUATOR) {
+			Actuator* actuator = (Actuator*)createDevice(config, dt);
+			if (actuator != NULL) {
+				actuator->setActive(false);
+				delete actuator;
+			}
+		}
+		return;
+	}
 	BasicTempSensor* s;
 	TempSensor* ts;
 	switch(dt) {

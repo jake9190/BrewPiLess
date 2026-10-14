@@ -236,6 +236,14 @@ void TempControl::updateState(void){
 		stayIdle = true;
 	}
 
+	if (((state == HEATING || state == HEATING_MIN_TIME || state == WAITING_TO_HEAT) &&
+		(cc.lightAsHeater ? light == &defaultActuator : heater == &defaultActuator)) ||
+		((state == COOLING || state == COOLING_MIN_TIME || state == WAITING_TO_COOL) &&
+		cooler == &defaultActuator)) {
+		state = IDLE;
+		stayIdle = true;
+	}
+
 	uint16_t sinceIdle = timeSinceIdle();
 	uint16_t sinceCooling = timeSinceCooling();
 	uint16_t sinceHeating = timeSinceHeating();
@@ -299,7 +307,7 @@ void TempControl::updateState(void){
 						break;
 					}
 				}
-				if(tempControl.heater != &defaultActuator || (cc.lightAsHeater && (tempControl.light != &defaultActuator))){
+				if(cc.lightAsHeater ? tempControl.light != &defaultActuator : tempControl.heater != &defaultActuator){
 					if(getWaitTime() > 0){
 						state = WAITING_TO_HEAT;
 					}
