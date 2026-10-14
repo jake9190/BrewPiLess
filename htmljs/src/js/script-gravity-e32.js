@@ -32,7 +32,7 @@ function toFixed() {
 function fromSetting(points){
     var pts=[];
     for(var i=0;i<points.length;i++){
-        var raw = (window.dev==DTTilt)? points[i][0]/10000:points[i][0]/100;
+        var raw = (window.device==DTTilt)? points[i][0]/10000:points[i][0]/100;
         var gravity= window.plato? points[i][1]/100:points[i][1]/10000;
         pts.push([raw,gravity]);
     }
@@ -42,7 +42,7 @@ function fromSetting(points){
 function toSetting(points){
     var pts=[];
     for(var i=0;i<points.length;i++){
-        var raw = (window.dev==DTTilt)? points[i][0]*10000:points[i][0]*100;
+        var raw = (window.device==DTTilt)? points[i][0]*10000:points[i][0]*100;
         var gravity= window.plato? points[i][1]*100:points[i][1]*10000;
         pts.push([Math.round(raw),Math.round(gravity)]);
     }
@@ -59,6 +59,9 @@ function fill(setting) {
             if (ele.type == "checkbox") ele.checked = setting[name];
             else ele.value = setting[name];
         }
+    }
+    if (setting.gcce) {
+        for (var i = 0; i < 4; i++) Q('input[name="a' + i + '"]').value = setting.gcce[i];
     }
     if(typeof setting["color"] != "undefined") Q("#tiltcolor").value = setting.color;
     if(typeof setting["calpts"] != "undefined"){
@@ -94,7 +97,12 @@ function save() {
     var setting = {};
 
     setting.dev = window.device;
+    window.plato = Q("#plato").checked;
     setting.calpts= toSetting(TCEditor.getPoints());
+    getFormula();
+    setting.gcce = [0, 1, 2, 3].map(function(i) {
+        return Number(Q('input[name="a' + i + '"]').value);
+    });
 
     for (var i = 0; i < inputs.length; i++) {
         var ele = inputs[i];
@@ -116,7 +124,7 @@ function save() {
     s_ajax({
         url: gdcurl,
         m: "POST",
-        mime: "aplication/json",
+        mime: "application/json",
         data: JSON.stringify(setting),
         success: function(a) {
             alert("<%= done %>");

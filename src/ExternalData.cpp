@@ -121,6 +121,7 @@ void ExternalData::_reconfig(void){
 	// process calibration points
 
 	// maintaining the calibratin data even not calculated.
+		_formulaValid=false;
 		_formulaKeeper.reset();
 		for(uint i=0;i<_cfg->numCalPoints;i++){
 			float gravity= _cfg->usePlato?  PlatoFromSetting(_cfg->calPoints[i].calsg):SGFromSetting(_cfg->calPoints[i].calsg);
@@ -260,7 +261,7 @@ void ExternalData::_setGravity(float sg){
 
 	if(!IsGravityValid(old_sg)) filter.setInitial(sg);
 #if EnableGravitySchedule
-    float _filteredGravity=filter.addData(sg);
+    _filteredGravity=filter.addData(sg);
 		// use filter data as input to tracker and beer profile.
 	brewKeeper.updateGravity(_filteredGravity);
 	uint32_t now=TimeKeeper.getTimeSeconds();
