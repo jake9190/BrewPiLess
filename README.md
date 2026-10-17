@@ -1,6 +1,9 @@
 # BrewPiLess
  **Note: Beer Profile exteds to maximum 10 steps. Your setting might lost. There is an utility, /extra/backup.htm. You can upload this file and use it to backup/restore the settings.**
 
+## Build languages
+Firmware environments and web-page/header generation build English only. Translation source files are retained but are not included in the build.
+
 ## Features
  * I2C LCD support.
  * Rotary encoder support (* not supported by default).

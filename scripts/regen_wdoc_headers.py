@@ -20,15 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DIST_DIR = ROOT / "htmljs" / "dist"
 WDOC_DIR = ROOT / "wdoc"
 
-LANGUAGES = [
-    "norwegian",
-    "english",
-    "spanish",
-    "portuguese-br",
-    "slovak",
-    "chinese",
-    "italian",
-]
+LANGUAGES = ["english"]
 
 # (output file suffix, C variable name, preferred source filenames in priority order)
 PAGES = [

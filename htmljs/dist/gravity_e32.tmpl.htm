@@ -294,7 +294,7 @@ setPoints:function(points){
 },
 add:function(){
     var uncal = parseFloat(Q("#uncalvalue").value);
-    var cal = parseFloat(Q("#calvalue").value);
+    var cal = parseFloat(Q("#calvalue").value);    
 //    if(!validSG(uncal) || !validSG(cal)) return;
 
     this.points.push([uncal,cal]);
@@ -352,9 +352,9 @@ function tiltcal(){
         doAll(".info-rawsg",function(div){div.style.display=""});
         }else{
             doAll(".info-angle",function(div){ div.style.display=""});
-            doAll(".info-rawsg",function(div){div.style.display="none"});
-    }
-
+            doAll(".info-rawsg",function(div){div.style.display="none"});    
+    }    
+    
     Q("#dlg_addcalpoint").style.display="block";
 }
 function closeTiltCal(){
@@ -386,7 +386,7 @@ function init(classic) {
     });
     TCEditor.init();
     DevSelect.init();
-
+    
     if (!classic) {
         getActiveNavItem();
         Q("#verinfo").innerHTML = "v" + JSVERSION;
@@ -417,10 +417,10 @@ select:function(r){
 done: function (){
     DevSelect.close();
 },
-
+    
 requestScan:function (){
     this.list=[];
-    var url = (window.device == 2)? "/tcmd?scan=1":"/pill?scan=1"
+    var url = (window.device == 2)? "/tcmd?scan=1":"/pill?scan=1" 
     s_ajax({
         url: url,
         success: function(a) {
@@ -433,7 +433,7 @@ requestScan:function (){
 
 stopScan:function (){
     this.list=[];
-    var url = (window.device == 2)? "/tcmd?scan=0":"/pill?scan=0"
+    var url = (window.device == 2)? "/tcmd?scan=0":"/pill?scan=0" 
     s_ajax({
         url: url,
         success: function(a) {
@@ -490,7 +490,7 @@ scanResult:function (r){
     BWF.init({
         //     reconnect: false,
         onconnect: function() {
-            // send
+            // send 
             DevSelect.requestScan();
         },
         error:function(e){

@@ -261,9 +261,9 @@ var TCEditor={
     },
     add:function(){
         var uncal = parseFloat(Q("#uncalvalue").value);
-        var cal = parseFloat(Q("#calvalue").value);
+        var cal = parseFloat(Q("#calvalue").value);    
     //    if(!validSG(uncal) || !validSG(cal)) return;
-
+    
         this.points.push([uncal,cal]);
         this.remove_all();
         this.render();
@@ -288,13 +288,13 @@ var TCEditor={
             t.render();
             return false;
         };
-
+    
         tr.querySelector(".uncaldata").innerHTML="" + data[0];
         tr.querySelector(".caldata").innerHTML="" + data[1];
-
+    
         return tr;
     },
-
+    
     render:function(){
         this.points.sort((a,b)=>{
             if(a[0] < b[0]) return -1;
@@ -340,7 +340,7 @@ function init(classic) {
         }
     });
     TCEditor.init();
-
+    
     if (!classic) {
         getActiveNavItem();
         Q("#verinfo").innerHTML = "v" + JSVERSION;
