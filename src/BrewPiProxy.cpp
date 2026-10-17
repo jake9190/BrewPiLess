@@ -33,7 +33,7 @@ static temperature float2InternalTemp(float ftemp){
 	}
 
 	long_temperature iparts =(long_temperature) floor(ftemp);
-	long_temperature fraction =(long_temperature) round(1000.0 *(ftemp - (float) iparts));
+	long_temperature fraction =(long_temperature) round(TEMP_FIXED_POINT_SCALE *(ftemp - (float) iparts));
 	long_temperature absval = (iparts << TEMP_FIXED_POINT_BITS) + fraction;
 	long_temperature val = negative? (- absval):absval;
 	val = convertToInternalTemp(val);
